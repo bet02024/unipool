@@ -1,0 +1,17 @@
+[profile.default]
+src = "src"
+test = "test"
+out = "out"
+libs = ["lib"]
+
+fs_permissions = [{ access = "read", path = "./" }]
+
+# Project paths
+solc_version = "0.8.20"
+
+# Gas and optimization
+optimizer = true
+optimizer_runs = 200
+
+# Enable upgradeable deploy plugin (optional)
+ 
