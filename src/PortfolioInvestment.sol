@@ -67,6 +67,39 @@ contract PortfolioInvestment is Initializable, UUPSUpgradeable, AccessControlUpg
 
     function _authorizeUpgrade(address newImplementation) internal override onlyRole(DEFAULT_ADMIN_ROLE) {}
 
+    function _swapExactInputSingle(PoolKey memory key, bool zeroForOne, uint128 amountIn, uint128 minAmountOut) internal returns (uint256 amountOut) {
+        permit2.approve(address(zeroForOne ? key.currency0 : key.currency1), address(universalRouter), amountIn, uint48(block.timestamp + 1 hours));
+
+        bytes memory commands = abi.encodePacked(uint8(Commands.V4_SWAP));
+        bytes[] memory inputs = new bytes[](1);
+
+        bytes memory actions = abi.encodePacked(
+            uint8(Actions.SWAP_EXACT_IN_SINGLE),
+            uint8(Actions.SETTLE_ALL),
+            uint8(Actions.TAKE_ALL)
+        );
+
+        bytes ;
+        params[0] = abi.encode(
+            IV4SwapRouter.ExactInputSingleParams({
+                poolKey: key,
+                zeroForOne: zeroForOne,
+                amountIn: amountIn,
+                amountOutMinimum: minAmountOut,
+                hookData: ""
+            })
+        );
+        params[1] = abi.encode(key.currency0, amountIn);
+        params[2] = abi.encode(key.currency1, minAmountOut);
+
+        inputs[0] = abi.encode(actions, params);
+
+        universalRouter.execute(commands, inputs, block.timestamp);
+
+        amountOut = IERC20Upgradeable(address(zeroForOne ? key.currency1 : key.currency0)).balanceOf(address(this));
+        require(amountOut >= minAmountOut, "Insufficient output amount");
+    }
+
     function invest(uint256 amount) external nonReentrant whenNotPaused {
         require(amount > 0, "Amount must be greater than 0");
         stableCoin.safeTransferFrom(msg.sender, address(this), amount);
@@ -85,25 +118,20 @@ contract PortfolioInvestment is Initializable, UUPSUpgradeable, AccessControlUpg
 
             uint256 amountToInvest = (amount * assetShare) / 1e18;
             if (amountToInvest > 0) {
-                address[] memory path = new address[](2);
-                path[0] = address(stableCoin);
-                path[1] = asset;
-
-                permit2.approve(address(stableCoin), address(uniswapRouter), uint160(amountToInvest), uint48(block.timestamp + 1 hours));
-                uint[] memory amounts = uniswapRouter.swapExactTokensForTokens(
-                    amountToInvest,
-                    0,
-                    path,
-                    address(this),
-                    block.timestamp
-                );
-
-                emit AssetSwapped(address(stableCoin), asset, amounts[0], amounts[amounts.length - 1]);
+                PoolKey memory key = PoolKey({
+                    currency0: address(stableCoin),
+                    currency1: asset,
+                    fee: 3000,
+                    tickSpacing: 60,
+                    hooks: address(0)
+                });
+                _swapExactInputSingle(key, true, uint128(amountToInvest), 0);
             }
         }
 
         emit Invest(msg.sender, amount);
     }
+
 
     function withdraw(uint256 basisPoints) external nonReentrant whenNotPaused {
         require(basisPoints > 0 && basisPoints <= 10000, "Invalid percentage");
@@ -121,7 +149,21 @@ contract PortfolioInvestment is Initializable, UUPSUpgradeable, AccessControlUpg
         userShares[msg.sender] -= withdrawShares;
         totalShares -= withdrawShares;
 
-        _liquidateToStable(totalSharesPortfolio);
+        for (uint256 i = 0; i < portfolioAssets.length; i++) {
+            address asset = portfolioAssets[i];
+            uint256 assetBalance = IERC20Upgradeable(asset).balanceOf(address(this));
+            uint256 amountToSell = (assetBalance * totalSharesPortfolio) / 10000;
+            if (amountToSell > 0) {
+                PoolKey memory key = PoolKey({
+                    currency0: asset,
+                    currency1: address(stableCoin),
+                    fee: 3000,
+                    tickSpacing: 60,
+                    hooks: address(0)
+                });
+                _swapExactInputSingle(key, true, uint128(amountToSell), 0);
+            }
+        }
 
         uint256 invested = (userInvestedAmount[msg.sender] * withdrawShares) / userShare;
         uint256 gain = amountStable > invested ? amountStable - invested : 0;
@@ -183,34 +225,18 @@ contract PortfolioInvestment is Initializable, UUPSUpgradeable, AccessControlUpg
         return total;
     }
 
-    function rebalance(
-        address[] calldata sellAssets,
-        uint256[] calldata sellAmounts,
-        address[] calldata buyAssets,
-        uint256[] calldata buyAmounts
-    ) external onlyRole(PORTFOLIO_MANAGER_ROLE) whenNotPaused {
-        require(
-            sellAssets.length == sellAmounts.length &&
-            buyAssets.length == buyAmounts.length,
-            "Mismatch in array lengths"
-        );
+    function rebalance(address[] calldata sellAssets, uint256[] calldata sellAmounts, address[] calldata buyAssets, uint256[] calldata buyAmounts) external onlyRole(PORTFOLIO_MANAGER_ROLE) whenNotPaused {
+        require(sellAssets.length == sellAmounts.length && buyAssets.length == buyAmounts.length, "Array length mismatch");
 
         for (uint256 i = 0; i < sellAssets.length; i++) {
-            IERC20Upgradeable token = IERC20Upgradeable(sellAssets[i]);
-            permit2.approve(sellAssets[i], address(uniswapRouter), uint160(sellAmounts[i]), uint48(block.timestamp + 1 hours));
-            address[] memory path = new address[](2);
-            path[0] = sellAssets[i];
-            path[1] = address(stableCoin);
-
-            uint[] memory amounts = uniswapRouter.swapExactTokensForTokens(
-                sellAmounts[i],
-                0,
-                path,
-                address(this),
-                block.timestamp
-            );
-
-            emit AssetSwapped(sellAssets[i], address(stableCoin), amounts[0], amounts[amounts.length - 1]);
+            PoolKey memory key = PoolKey({
+                currency0: sellAssets[i],
+                currency1: address(stableCoin),
+                fee: 3000,
+                tickSpacing: 60,
+                hooks: address(0)
+            });
+            _swapExactInputSingle(key, true, uint128(sellAmounts[i]), 0);
         }
 
         uint256 stableBalance = stableCoin.balanceOf(address(this));
@@ -222,26 +248,21 @@ contract PortfolioInvestment is Initializable, UUPSUpgradeable, AccessControlUpg
             }
             if (amount == 0) continue;
 
-            address[] memory path = new address[](2);
-            path[0] = address(stableCoin);
-            path[1] = buyAssets[i];
-
-            permit2.approve(address(stableCoin), address(uniswapRouter), uint160(amount), uint48(block.timestamp + 1 hours));
-            uint[] memory amounts = uniswapRouter.swapExactTokensForTokens(
-                amount,
-                0,
-                path,
-                address(this),
-                block.timestamp
-            );
-
-            emit AssetSwapped(address(stableCoin), buyAssets[i], amounts[0], amounts[amounts.length - 1]);
-
+            PoolKey memory key = PoolKey({
+                currency0: address(stableCoin),
+                currency1: buyAssets[i],
+                fee: 3000,
+                tickSpacing: 60,
+                hooks: address(0)
+            });
+            _swapExactInputSingle(key, true, uint128(amount), 0);
             stableBalance -= amount;
         }
 
         emit Rebalanced(sellAssets, buyAssets);
     }
+
+
 
     function setPortfolioAssets(address[] calldata assets) external onlyRole(PORTFOLIO_MANAGER_ROLE) {
         portfolioAssets = assets;
