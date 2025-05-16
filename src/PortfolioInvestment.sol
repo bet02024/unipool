@@ -9,15 +9,9 @@ import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
-interface IUniswapV4Router {
-    function swapExactTokensForTokens(
-        uint amountIn,
-        uint amountOutMin,
-        address[] calldata path,
-        address to,
-        uint deadline
-    ) external returns (uint[] memory amounts);
-}
+import {IUniversalRouter} from "@uniswap/universal-router/contracts/interfaces/IUniversalRouter.sol";
+import {IV4SwapRouter, Commands, Actions, PoolKey} from "@uniswap/universal-router/contracts/interfaces/IV4SwapRouter.sol";
+
 
 interface IOracle {
     function getPrice(address token) external view returns (uint256);
@@ -33,7 +27,8 @@ contract PortfolioInvestment is Initializable, UUPSUpgradeable, AccessControlUpg
     bytes32 public constant PORTFOLIO_MANAGER_ROLE = keccak256("PORTFOLIO_MANAGER_ROLE");
 
     IERC20Upgradeable public stableCoin;
-    IUniswapV4Router public uniswapRouter;
+    IUniversalRouter public universalRouter;
+    IV4SwapRouter public v4Router;
     IOracle public priceOracle;
     IPermit2 public permit2;
     address public treasury;
@@ -49,7 +44,7 @@ contract PortfolioInvestment is Initializable, UUPSUpgradeable, AccessControlUpg
     event Rebalanced(address[] sellAssets, address[] buyAssets);
     event AssetSwapped(address indexed fromToken, address indexed toToken, uint256 amountIn, uint256 amountOut);
 
-    function initialize(address _stableCoin, address _uniswapRouter, address _oracle, address _treasury, address _permit2) public initializer {
+    function initialize(address _stableCoin, address _universalRouter, address _oracle, address _treasury, address _permit2) public initializer {
         __AccessControl_init();
         __ReentrancyGuard_init();
         __Pausable_init();
@@ -59,7 +54,7 @@ contract PortfolioInvestment is Initializable, UUPSUpgradeable, AccessControlUpg
         _grantRole(PORTFOLIO_MANAGER_ROLE, msg.sender);
 
         stableCoin = IERC20Upgradeable(_stableCoin);
-        uniswapRouter = IUniswapV4Router(_uniswapRouter);
+        universalRouter = IUniversalRouter(_universalRouter);
         priceOracle = IOracle(_oracle);
         permit2 = IPermit2(_permit2);
         treasury = _treasury;
@@ -68,6 +63,8 @@ contract PortfolioInvestment is Initializable, UUPSUpgradeable, AccessControlUpg
     function _authorizeUpgrade(address newImplementation) internal override onlyRole(DEFAULT_ADMIN_ROLE) {}
 
     function _swapExactInputSingle(PoolKey memory key, bool zeroForOne, uint128 amountIn, uint128 minAmountOut) internal returns (uint256 amountOut) {
+       
+       
         permit2.approve(address(zeroForOne ? key.currency0 : key.currency1), address(universalRouter), amountIn, uint48(block.timestamp + 1 hours));
 
         bytes memory commands = abi.encodePacked(uint8(Commands.V4_SWAP));
@@ -98,6 +95,7 @@ contract PortfolioInvestment is Initializable, UUPSUpgradeable, AccessControlUpg
 
         amountOut = IERC20Upgradeable(address(zeroForOne ? key.currency1 : key.currency0)).balanceOf(address(this));
         require(amountOut >= minAmountOut, "Insufficient output amount");
+        
     }
 
     function invest(uint256 amount) external nonReentrant whenNotPaused {
@@ -189,22 +187,21 @@ contract PortfolioInvestment is Initializable, UUPSUpgradeable, AccessControlUpg
             if (balance == 0) continue;
 
             uint256 amountToSell = (balance * portfolioBasisPoints) / 10000;
-            address[] memory path = new address[](2);
-            path[0] = asset;
-            path[1] = address(stableCoin);
-
-            permit2.approve(asset, address(uniswapRouter), uint160(amountToSell), uint48(block.timestamp + 1 hours));
-            uint[] memory amounts = uniswapRouter.swapExactTokensForTokens(
-                amountToSell,
-                0,
-                path,
-                address(this),
-                block.timestamp
-            );
-
-            emit AssetSwapped(asset, address(stableCoin), amounts[0], amounts[amounts.length - 1]);
+            if (amountToSell > 0) {
+                PoolKey memory key = PoolKey({
+                    currency0: asset,
+                    currency1: address(stableCoin),
+                    fee: 3000,
+                    tickSpacing: 60,
+                    hooks: address(0)
+                });
+                _swapExactInputSingle(key, true, uint128(amountToSell), 0);
+                emit AssetSwapped(asset, address(stableCoin), amounts[0], amounts[amounts.length - 1]);
+            }
         }
     }
+
+ 
 
     function _getAssetValue(address asset) internal view returns (uint256) {
         uint256 balance = IERC20Upgradeable(asset).balanceOf(address(this));
