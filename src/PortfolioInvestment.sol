@@ -1,16 +1,20 @@
  
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.22;
 
-import "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
-import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/access/AccessControl.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
+import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts/proxy/utils/UUPSUpgradeable.sol";
 
 import {IUniversalRouter} from "@uniswap/universal-router/contracts/interfaces/IUniversalRouter.sol";
-import {IV4SwapRouter, Commands, Actions, PoolKey} from "@uniswap/universal-router/contracts/interfaces/IV4SwapRouter.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {Commands} from "@uniswap/universal-router/contracts/libraries/Commands.sol";
+import {IV4Router} from  "@uniswap/v4-periphery/interfaces/IV4Router.sol";
+import { Actions } from "@uniswap/v4-periphery/libraries/Actions.sol";
+
 
 
 interface IOracle {
@@ -28,7 +32,6 @@ contract PortfolioInvestment is Initializable, UUPSUpgradeable, AccessControlUpg
 
     IERC20Upgradeable public stableCoin;
     IUniversalRouter public universalRouter;
-    IV4SwapRouter public v4Router;
     IOracle public priceOracle;
     IPermit2 public permit2;
     address public treasury;
@@ -78,7 +81,7 @@ contract PortfolioInvestment is Initializable, UUPSUpgradeable, AccessControlUpg
 
         bytes ;
         params[0] = abi.encode(
-            IV4SwapRouter.ExactInputSingleParams({
+            IV4Router.ExactInputSingleParams({
                 poolKey: key,
                 zeroForOne: zeroForOne,
                 amountIn: amountIn,

@@ -7,7 +7,7 @@ libs = ["lib"]
 fs_permissions = [{ access = "read", path = "./" }]
 
 # Project paths
-solc_version = "0.8.20"
+solc_version = "0.8.24"
 
 # Gas and optimization
 optimizer = true
