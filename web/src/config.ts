@@ -8,3 +8,6 @@ export const config = {
     webSocketPublicClient: undefined,
   },
 };
+
+
+export default config;

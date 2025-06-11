@@ -1,7 +1,6 @@
-import logo from './logo.svg';
 import './App.css';
-import { PortfolioInvestment } from './PortfolioInvestment.js';
-
+import PortfolioInvestment from './PortfolioInvestment';
+const logo = require('./logo.svg');
 
 function App() {
   return (
