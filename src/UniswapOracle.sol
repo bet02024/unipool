@@ -1,14 +1,16 @@
-// SPDX-License-Identifier: GPL-2.0-or-later
+/Users/josealbertogarciagarcia/Documents/GitHub/unipool/script/DeployUniswapOracle.s.sol
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 pragma abicoder v2;
 
 import '@openzeppelin/contracts/utils/Address.sol';
+import '@openzeppelin/contracts/token/ERC20/ERC20.sol';
 import '@openzeppelin/contracts/access/Ownable.sol';
 import '@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol';
 import '@uniswap/v3-periphery/contracts/libraries/PoolAddress.sol';
 import '@uniswap/v3-periphery/contracts/libraries/OracleLibrary.sol';
 import './OracleLibraryPlus.sol';
-import './IStaticOracle.sol';
+  import './IStaticOracle.sol';
 
 /// @title Uniswap V3 Oracle
 /// @notice Oracle contract for price quoting against Uniswap V3 pools
@@ -18,10 +20,13 @@ contract UniswapOracle is IStaticOracle, Ownable {
   /// @inheritdoc IStaticOracle
   uint8 public immutable override CARDINALITY_PER_MINUTE;
   uint24[] internal _knownFeeTiers;
+  address internal USDC;
 
-  constructor(IUniswapV3Factory _UNISWAP_V3_FACTORY, uint8 _CARDINALITY_PER_MINUTE) {
+ constructor(IUniswapV3Factory _UNISWAP_V3_FACTORY, uint8 _CARDINALITY_PER_MINUTE, address _USDC) {
+
     UNISWAP_V3_FACTORY = _UNISWAP_V3_FACTORY;
     CARDINALITY_PER_MINUTE = _CARDINALITY_PER_MINUTE;
+    USDC = _USDC;
 
     // Assign default fee tiers
     _knownFeeTiers.push(100);
@@ -33,6 +38,30 @@ contract UniswapOracle is IStaticOracle, Ownable {
   /// @inheritdoc IStaticOracle
   function supportedFeeTiers() external view override returns (uint24[] memory) {
     return _knownFeeTiers;
+  }
+
+  /// @inheritdoc IStaticOracle
+  function getPrice(
+    address _baseToken
+  ) public view override returns (uint256 _quoteAmount) {
+    address _quoteToken = USDC;
+    uint32 _period = 60;
+    uint32 _offset =0;
+    uint128 _baseAmount = 10**ERC20(_baseToken).decimals();
+    
+    address[] memory  _queriedPools = _getQueryablePoolsForTiers(_baseToken, _quoteToken, _offset + _period);
+    _quoteAmount = _quote(_baseAmount, _baseToken, _quoteToken, _queriedPools, _period, _offset);
+  }
+
+  function isTokenSupported(address _tokenA) external view override returns (bool) {
+    uint256 _length = _knownFeeTiers.length;
+    for (uint256 i; i < _length; ++i) {
+      address _pool = PoolAddress.computeAddress(address(UNISWAP_V3_FACTORY), PoolAddress.getPoolKey(_tokenA, USDC, _knownFeeTiers[i]));
+      if (Address.isContract(_pool)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /// @inheritdoc IStaticOracle
@@ -83,6 +112,8 @@ contract UniswapOracle is IStaticOracle, Ownable {
   ) external view override returns (uint256 _quoteAmount) {
     return quoteSpecificPoolsWithOffsettedTimePeriod(_baseAmount, _baseToken, _quoteToken, _pools, _period, 0);
   }
+
+
 
   /// @inheritdoc IStaticOracle
   function quoteAllAvailablePoolsWithOffsettedTimePeriod(

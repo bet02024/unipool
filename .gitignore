@@ -12,6 +12,11 @@ docs/
 
 lib/
 
+cache/
+node_nodules/
+out/
+web/node_nodules/
+
 
 # Dotenv file
 .env

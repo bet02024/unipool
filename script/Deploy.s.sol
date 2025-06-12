@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import {Script} from "forge-std/Script.sol";
 
-import "src/PortfolioInvestment.sol";
+import "src/UnipoolInvestment.sol";
 
 contract DeployScript is Script {
     function setUp() public {}
@@ -18,7 +18,7 @@ contract DeployScript is Script {
         address treasury = address(0x0000000000000000000000000000000000000000);   // Replace
         address permit2 = address(0x000000000022D473030F116dDEE9F6B43aC78BA3);   
 
-        PortfolioInvestment investment = new PortfolioInvestment();
+        UnipoolInvestment investment = new UnipoolInvestment();
         investment.initialize(stableCoin, router, oracle, treasury, permit2);
 
         vm.stopBroadcast();

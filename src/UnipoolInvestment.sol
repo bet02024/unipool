@@ -26,7 +26,7 @@ interface IPermit2 {
     function approve(address token, address spender, uint160 amount, uint48 expiration) external;
 }
 
-contract PortfolioInvestment is Initializable, UUPSUpgradeable, AccessControlUpgradeable, ReentrancyGuardUpgradeable, PausableUpgradeable {
+contract UnipoolInvestment is Initializable, UUPSUpgradeable, AccessControlUpgradeable, ReentrancyGuardUpgradeable, PausableUpgradeable {
 
     bytes32 public constant PORTFOLIO_MANAGER_ROLE = keccak256("PORTFOLIO_MANAGER_ROLE");
     using SafeERC20 for IERC20;
@@ -36,6 +36,7 @@ contract PortfolioInvestment is Initializable, UUPSUpgradeable, AccessControlUpg
     IOracle public priceOracle;
     IPermit2 public permit2;
     address public treasury;
+    uint256 private precision = 10000000000;
 
     uint256 public totalShares;
     mapping(address => uint256) public userShares;
@@ -97,7 +98,7 @@ contract PortfolioInvestment is Initializable, UUPSUpgradeable, AccessControlUpg
         address token0,
         address token1
 
-    ) internal {
+    ) internal returns (uint256 amountOut)  {
         PoolKey memory key = PoolKey({
             currency0: Currency.wrap(token0),
             currency1: Currency.wrap(token1),
@@ -105,7 +106,7 @@ contract PortfolioInvestment is Initializable, UUPSUpgradeable, AccessControlUpg
             tickSpacing: 60,
             hooks: IHooks(address(0))
         });
-        _swapExactInputSingle(key, uint128(amountToInvest), 0);
+        return _swapExactInputSingle(key, uint128(amountToInvest), 0);
     }
 
 
@@ -146,14 +147,16 @@ contract PortfolioInvestment is Initializable, UUPSUpgradeable, AccessControlUpg
 
     function invest(uint256 amount) external nonReentrant whenNotPaused {
         require(amount > 0, "Amount must be greater than 0");
-        stableCoin.safeTransferFrom(msg.sender, address(this), amount);
+        require(portfolioAssets.length > 0, "Porfolio assets not set yet");
 
-        uint256 sharesToMint = totalShares == 0 ? amount : (amount * totalShares) / getPortfolioValue();
+        stableCoin.safeTransferFrom(msg.sender, address(this), amount);
+        uint256 totalPortfolioValue = getPortfolioValue();
+
+        uint256 sharesToMint = totalShares == 0 ? amount : (amount * totalShares) / totalPortfolioValue;
         userShares[msg.sender] += sharesToMint;
         userInvestedAmount[msg.sender] += amount;
         totalShares += sharesToMint;
 
-        uint256 totalPortfolioValue = getPortfolioValue();
 
         for (uint256 i = 0; i < portfolioAssets.length; i++) {
             address asset = portfolioAssets[i];
@@ -176,53 +179,38 @@ contract PortfolioInvestment is Initializable, UUPSUpgradeable, AccessControlUpg
         require(userShare > 0, "No shares to withdraw");
 
         uint256 withdrawShares = (userShare * basisPoints) / 10000;
-        uint256 portfolioValue = getPortfolioValue();
-        uint256 amountStable = (withdrawShares * portfolioValue) / totalShares;
+        require(withdrawShares > 0, "Insufficient share");
+        
+        uint256 investedProportionToSell = (userInvestedAmount[msg.sender] * withdrawShares) / userShare;
 
-        require(withdrawShares <= userShare, "Insufficient share");
-
-        uint256 totalSharesPortfolio = (withdrawShares * 10000) / totalShares;
-
+        //uint256 portfolioValue = getPortfolioValue();
+        //uint256 amountStable = (withdrawShares * portfolioValue) / totalShares;
+        uint256 totalSharesPortfolioToWithdraw = (withdrawShares * precision) / totalShares;
         userShares[msg.sender] -= withdrawShares;
         totalShares -= withdrawShares;
+        uint256 totalconverted = 0;
 
         for (uint256 i = 0; i < portfolioAssets.length; i++) {
             address asset = portfolioAssets[i];
             uint256 assetBalance = IERC20(asset).balanceOf(address(this));
-            uint256 amountToSell = (assetBalance * totalSharesPortfolio) / 10000;
+            uint256 amountToSell = (assetBalance * totalSharesPortfolioToWithdraw) / precision;
             if (amountToSell > 0) {
-                swapTokens( amountToSell, asset, address(stableCoin));
+               totalconverted += swapTokens( amountToSell, asset, address(stableCoin));
             }
         }
 
-        uint256 invested = (userInvestedAmount[msg.sender] * withdrawShares) / userShare;
-        uint256 gain = amountStable > invested ? amountStable - invested : 0;
-        uint256 fee = (gain * 5) / 100;
-        uint256 amountToUser = amountStable - fee;
+        uint256 gain = totalconverted > investedProportionToSell ? totalconverted - investedProportionToSell : 0;
+        uint256 fee = (gain * 8) / 100;
+        uint256 amountToUser = totalconverted - fee;
 
         stableCoin.safeTransfer(msg.sender, amountToUser);
         if (fee > 0) {
             stableCoin.safeTransfer(treasury, fee);
         }
 
-        userInvestedAmount[msg.sender] -= invested;
-
-        emit Withdraw(msg.sender, amountStable, amountToUser, fee);
-    }
-
-    function _liquidateToStable(uint256 portfolioBasisPoints) internal {
-        uint256 assetCount = portfolioAssets.length;
-        for (uint256 i = 0; i < assetCount; i++) {
-            address asset = portfolioAssets[i];
-            IERC20 token = IERC20(asset);
-            uint256 balance = token.balanceOf(address(this));
-            if (balance == 0) continue;
-            uint256 amountToSell = (balance * portfolioBasisPoints) / 10000;
-            if (amountToSell > 0) {
-                swapTokens( amountToSell, asset, address(stableCoin));
-            }
-        }
-    }
+        userInvestedAmount[msg.sender] -= investedProportionToSell;
+        emit Withdraw(msg.sender, totalconverted, amountToUser, fee);
+    } 
 
     function _getAssetValue(address asset) internal view returns (uint256) {
         uint256 balance = IERC20(asset).balanceOf(address(this));

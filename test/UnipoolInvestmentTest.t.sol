@@ -6,12 +6,12 @@ import {UniversalRouter} from "@uniswap/universal-router/contracts/UniversalRout
 import { Upgrades } from "openzeppelin-foundry-upgrades/Upgrades.sol";
 
 import "forge-std/Test.sol";
-import "../src/PortfolioInvestment.sol";
+import "../src/UnipoolInvestment.sol";
 import "./Mocks.t.sol";
 
-contract PortfolioInvestmentTest is Test {
-    PortfolioInvestment public portfolio;
-    PortfolioInvestment public upgradedPortfolio;
+contract UnipoolInvestmentTest is Test {
+    UnipoolInvestment public portfolio;
+    UnipoolInvestment public upgradedPortfolio;
     MockPermit2 public permit2;
     MockOracle public oracle;
     UniversalRouter router;
@@ -46,7 +46,7 @@ contract PortfolioInvestmentTest is Test {
         router = new UniversalRouter(params);
 
 
-        portfolio = new PortfolioInvestment();
+        portfolio = new UnipoolInvestment();
         portfolio.initialize(address(stable), address(router), address(oracle), treasury, address(permit2));
 
         address[] memory assets = new address[](2);
@@ -156,7 +156,7 @@ contract PortfolioInvestmentTest is Test {
 
     /*
     function testUUPSUpgradeSimulation() public {
-        upgradedPortfolio = new PortfolioInvestment();
+        upgradedPortfolio = new UnipoolInvestment();
 
         vm.prank(admin);
         portfolio.upgradeTo(address(upgradedPortfolio));
