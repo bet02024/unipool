@@ -1,2 +1,24 @@
-# unipool
-Unipool is a public, decentralized pool where intelligent agents autonomously rebalance and manage crypto assets using our Smart Contract
+# Unipool
+# Distributed Portfolio implemented using Uniswap V4
+
+# Forge Test Highlighting a Uniswap V4 swap
+
+## Usage
+
+Install foundry:
+https://book.getfoundry.sh/
+
+Copy `.env.example` to `.env` and add your rpc url
+
+
+### Build
+
+```shell
+$ forge build
+```
+
+### Test
+
+```shell
+$ forge test -vvvv
+```

@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "@pythnetwork/pyth-sdk-solidity": "^4.1.0",
+    "@uniswap/v3-periphery": "^1.4.4"
+  }
+}

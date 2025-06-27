@@ -1,0 +1,43 @@
+# Compiler files
+cache/
+out/
+
+# Ignores development broadcast logs
+!/broadcast
+/broadcast
+/broadcast/*/31337/
+/broadcast/**/dry-run/
+
+# Docs
+docs/
+
+cache/
+node_nodules/
+out/
+web/node_nodules/
+lib/*
+web/.next/
+web/.DS_Store
+.DS_Store
+
+# Dotenv file
+web/.env
+web/.env.example
+web/.env.local
+.env
+.env.example
+.github/
+.gitmodules
+# dependencies
+web/node_modules
+web/.pnp
+web/.pnp.js
+
+# testing
+web/coverage
+
+# production
+web/build
+web/npm-debug.log*
+web/yarn-debug.log*
+web/yarn-error.log*
