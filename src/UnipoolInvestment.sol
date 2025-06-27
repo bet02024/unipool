@@ -97,14 +97,13 @@ contract UnipoolInvestment is Initializable, UUPSUpgradeable, AccessControlUpgra
     function swapTokens(
         uint256 amountToInvest,
         address token0,
-        address token1, 
-        bool toStableCoin
+        address token1
     ) internal returns (uint256 amountOut)  {
         PoolKey memory key;
         bytes[] memory params = new bytes[](3);
         bool zeroForOne = true;
         
-        if (toStableCoin){
+        if (token1 == address(stableCoin)){
             key = PoolKey({
                 currency0: Currency.wrap(token1), //USDC
                 currency1: Currency.wrap(token0), //TOKEN
@@ -170,7 +169,7 @@ contract UnipoolInvestment is Initializable, UUPSUpgradeable, AccessControlUpgra
             uint256 assetPercentageToBuy = (totalAssetValue * 1e18) / totalPortfolioValue;
             uint256 amountToInvest = (amount * assetPercentageToBuy) / 1e18;
             if (amountToInvest > 0) {
-                swapTokens( amountToInvest, address(stableCoin), asset, false);
+                swapTokens( amountToInvest, address(stableCoin), asset);
             }
         }
         emit Invest(msg.sender, amount);
@@ -195,7 +194,7 @@ contract UnipoolInvestment is Initializable, UUPSUpgradeable, AccessControlUpgra
             uint256 assetBalance = IERC20(asset).balanceOf(address(this));
             uint256 amountToSell = (assetBalance * totalSharesPortfolioToWithdraw) / precision;
             if (amountToSell > 0) {
-                totalconverted += swapTokens( amountToSell, asset, address(stableCoin), true);
+                totalconverted += swapTokens( amountToSell, asset, address(stableCoin));
             }
         }
         uint256 gain = totalconverted > investedProportionToSell ? totalconverted - investedProportionToSell : 0;
@@ -250,7 +249,7 @@ contract UnipoolInvestment is Initializable, UUPSUpgradeable, AccessControlUpgra
             uint256 amountToSell = (assetBalance * bps) / 10000;
             require(amountToSell <= assetBalance, "Invalid sell amount");
             if (amountToSell > 0) {
-                swapTokens(amountToSell, sellAssets[i], address(stableCoin), true);
+                swapTokens(amountToSell, sellAssets[i], address(stableCoin));
             }
         }
         
@@ -264,7 +263,7 @@ contract UnipoolInvestment is Initializable, UUPSUpgradeable, AccessControlUpgra
                 amountToBuy = stableBalance;
             }
             if (amountToBuy == 0) continue;
-            swapTokens(amountToBuy, address(stableCoin), buyAssets[i], false);
+            swapTokens(amountToBuy, address(stableCoin), buyAssets[i]);
             stableBalance -= amountToBuy;
         }
 
