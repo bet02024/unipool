@@ -1,18 +1,18 @@
-//import { unichain } from "wagmi/chains"
-import { type Chain } from 'viem'
+import type { Chain } from "viem"
 
 export const unichain = {
   id: 130,
-  name: 'Unichain',
-  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+  name: "Unichain",
+  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
   rpcUrls: {
-    default: { http: ['https://unichain-mainnet.infura.io/v3/26R21SZqpvCe4I4tByOc41h4p8h', 'https://mainnet.unichain.org', 'https://unichain-rpc.publicnode.com' ] },
+    default: {
+      http: ["https://mainnet.unichain.org", "https://unichain-rpc.publicnode.com"],
+    },
   },
   blockExplorers: {
-    default: { name: 'Unichain Mainnet Explorer', url: 'https://unichain.blockscout.com' },
-  }, 
+    default: { name: "Unichain Mainnet Explorer", url: "https://unichain.blockscout.com" },
+  },
 } as const satisfies Chain
-
 
 export const CONTRACTS = {
   UNIPOOL: {
@@ -207,6 +207,6 @@ export const SUPPORTED_CHAINS = {
 export const NETWORK_CONFIG = {
   chainId: unichain.id,
   chainName: unichain.name,
-  rpcUrl: 'https://unichain-mainnet.infura.io/v3/26R21SZqpvCe4I4tByOc41h4p8h',
-  blockExplorerUrl: 'https://unichain.blockscout.com/',
+  rpcUrl: "https://mainnet.unichain.org",
+  blockExplorerUrl: "https://unichain.blockscout.com/",
 }

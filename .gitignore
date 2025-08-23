@@ -26,6 +26,8 @@ web/.env.example
 web/.env.local
 .env
 .env.example
+*/.env
+
 .github/
 .gitmodules
 # dependencies
@@ -41,3 +43,6 @@ web/build
 web/npm-debug.log*
 web/yarn-debug.log*
 web/yarn-error.log*
+
+dApp/.next
+dApp/node_modules

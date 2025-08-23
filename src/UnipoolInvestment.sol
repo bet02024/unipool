@@ -56,7 +56,7 @@ contract UnipoolInvestment is Initializable, UUPSUpgradeable, AccessControlUpgra
         address[] memory assets = new address[](n);
         for (uint256 i = 0; i < n; i++) {
             assets[i] = portfolioAssets[i];
-            balances[i] = _getAssetValue(portfolioAssets[i]);
+            balances[i] = _getAssetBalance(portfolioAssets[i]);
         }
         return (assets, balances);
     }
@@ -213,6 +213,12 @@ contract UnipoolInvestment is Initializable, UUPSUpgradeable, AccessControlUpgra
         uint256 price = priceOracle.getPrice(asset);
         return (balance * price) / 1e18;
     }
+
+    function _getAssetBalance(address asset) internal view returns (uint256) {
+        return IERC20(asset).balanceOf(address(this));
+    }
+
+
 
     function getUserShareValue(address user) public view returns (uint256) {
         return (userShares[user] * getPortfolioValue()) / totalShares;

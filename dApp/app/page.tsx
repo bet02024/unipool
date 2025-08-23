@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, Suspense, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,10 +13,10 @@ import { TrendingUp, TrendingDown, DollarSign, PieChart, RefreshCw, AlertCircle,
 import { toast } from "sonner"
 import { ConnectKitButton } from "connectkit"
 import { useAccount, useChainId, useSwitchChain } from "wagmi"
-import { mainnet } from "wagmi/chains"
 import { SUPPORTED_CHAINS } from "@/config/contracts"
+import { DashboardApp } from "@/app/dashboard"
 
-export default function UnipoolDApp() {
+function DAppContent() {
   const { address, isConnected } = useAccount()
   const chainId = useChainId()
   const { switchChain } = useSwitchChain()
@@ -82,6 +82,21 @@ export default function UnipoolDApp() {
     })
   }
 
+  useEffect(() => {
+    if (isConnected) {
+      console.log("###Connected###")
+      if (refetch) 
+        refetch(address)
+    } else {
+      console.log("###Disonnected###")
+      setInvestAmount("")
+      setWithdrawPercentage([25])
+    }
+  }, [isConnected])
+
+  
+
+
   const isTransacting = isPending || isConfirming
 
   // Show transaction status
@@ -132,11 +147,11 @@ export default function UnipoolDApp() {
                 .join(", ")}
             </div>
             <Button
-              onClick={() => switchChain({ chainId: mainnet.id })}
+              onClick={() => switchChain && switchChain({ chainId: 130 })}
               className="w-full bg-yellow-500 text-black hover:bg-yellow-600"
             >
               <Network className="w-4 h-4 mr-2" />
-              Switch to Ethereum
+              Switch to Unichain
             </Button>
           </CardContent>
         </Card>
@@ -151,7 +166,7 @@ export default function UnipoolDApp() {
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-3xl font-bold">Unipool DApp</h1>
-            <p className="text-gray-400">Decentralized Investment Protocol</p>
+            <p className="text-gray-400">Decentralized Investment Protocol!</p>
           </div>
           <div className="flex items-center gap-4">
             <Button
@@ -165,7 +180,7 @@ export default function UnipoolDApp() {
               Refresh
             </Button>
             <Badge variant="outline" className="border-gray-700 text-white">
-              {formatAddress(address!)} • {SUPPORTED_CHAINS[chainId as keyof typeof SUPPORTED_CHAINS]?.name}
+              {formatAddress(address!)} • {chainId && SUPPORTED_CHAINS[chainId as keyof typeof SUPPORTED_CHAINS]?.name}
             </Badge>
             <ConnectKitButton.Custom>
               {({ isConnected, show, truncatedAddress, ensName }) => {
@@ -370,7 +385,32 @@ export default function UnipoolDApp() {
             </CardContent>
           </Card>
         </div>
+
+
+       <div className="grid grid-cols-1 lg:grid-cols-1 gap-6">
+
+         <Card className="bg-gray-900 border-gray-800">
+                <DashboardApp/>
+          </Card>
+          </div>
       </div>
     </div>
+  )
+}
+
+export default function UnipoolDApp() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-black text-white flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+            <p>Loading DApp...</p>
+          </div>
+        </div>
+      }
+    >
+      <DAppContent />
+    </Suspense>
   )
 }
