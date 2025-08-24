@@ -17,7 +17,6 @@ interface PortfolioData {
 }
 
 export function useUnipool() {
-
   const { address, isConnected } = useAccount()
   const chainId = useChainId()
   const [portfolioData, setPortfolioData] = useState<PortfolioData | null>(null)
@@ -130,10 +129,6 @@ export function useUnipool() {
     },
   })
 
-  useEffect(() => {
-    console.log("## useEffect [address, isConnected] ##",  address, isConnected)
-    }, [address, isConnected])
-
   // Update portfolio data when contract reads complete
   useEffect(() => {
    /* if (
@@ -146,18 +141,13 @@ export function useUnipool() {
     ) {*/
       try {
 
-        console.log("## Update portfolio data ##",  address, isConnected, userShares, userShareValue, userInvestedAmount, 
-          totalPortfolioValue, totalShares, assetBalancesData)
-
-
+        console.log("## Update portfolio data ##", userShares, userShareValue, userInvestedAmount, totalPortfolioValue, totalShares, assetBalancesData)
         const [assetAddresses, assetBalances] = assetBalancesData as [readonly `0x${string}`[], readonly bigint[]]
 
         const formattedAssetBalances = assetAddresses.map((addr, index) => ({
           address: addr,
-          balance: formatUnits(assetBalances[index], 6),
+          balance: formatUnits(assetBalances[index], 18),
         }))
-
-        console.log("## formattedAssetBalances ##", formattedAssetBalances)
 
         const userShareValueFormatted = formatUnits(userShareValue, 6)
         const userInvestedAmountFormatted = formatUnits(userInvestedAmount, 6)
@@ -184,7 +174,7 @@ export function useUnipool() {
         console.error("Error processing portfolio data:", error)
       }
    // }
-  }, [userShares, userShareValue, userInvestedAmount, totalPortfolioValue, totalShares, assetBalancesData, isConnected])
+  }, [userShares, userShareValue, userInvestedAmount, totalPortfolioValue, totalShares, assetBalancesData])
 
   // Update USDC data
   useEffect(() => {
@@ -245,8 +235,8 @@ export function useUnipool() {
     [currentContracts, writeContract],
   )
 
-  const refetch = useCallback(( _address: any) => {
-    console.log("###refetch()###", _address, chainId, isChainSupported, address, isConnected )
+  const refetch = useCallback(() => {
+    console.log("###refetch()###")
     Promise.all([
       refetchUserShares(),
       refetchUserShareValue(),

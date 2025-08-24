@@ -43,10 +43,15 @@ contract UnipoolInvestment is Initializable, UUPSUpgradeable, AccessControlUpgra
     mapping(address => uint256) public userShares;
     mapping(address => uint256) public userInvestedAmount;
     address[] private portfolioAssets;
+    address[] private whitelistedAssets;
 
     // Returns the list of current portfolio assets
     function portfolioAssetsList() public view returns (address[] memory) {
         return portfolioAssets;
+    }
+
+    function whitelistedAssetsList() public view returns (address[] memory) {
+        return whitelistedAssets;
     }
 
     // Returns two arrays: the portfolio asset addresses and their values via _getAssetValue
@@ -159,6 +164,7 @@ contract UnipoolInvestment is Initializable, UUPSUpgradeable, AccessControlUpgra
         require(portfolioAssets.length > 0, "Porfolio assets not set yet");
         stableCoin.safeTransferFrom(msg.sender, address(this), amount);
         uint256 totalPortfolioValue = getPortfolioValue();
+        require(totalPortfolioValue > 0, "Portfolio Value must be greater than 0");
         uint256 sharesToMint = totalShares == 0 ? amount : (amount * totalShares) / totalPortfolioValue;
         userShares[msg.sender] += sharesToMint;
         userInvestedAmount[msg.sender] += amount;
@@ -211,7 +217,13 @@ contract UnipoolInvestment is Initializable, UUPSUpgradeable, AccessControlUpgra
     function _getAssetValue(address asset) internal view returns (uint256) {
         uint256 balance = IERC20(asset).balanceOf(address(this));
         uint256 price = priceOracle.getPrice(asset);
-        return (balance * price) / 1e18;
+
+        if(asset == 0x927B51f251480a681271180DA4de28D44EC4AfB8){
+            return (balance * price) / 1e8;
+        } else{
+            return (balance * price) / 1e18;
+        }
+        
     }
 
     function _getAssetBalance(address asset) internal view returns (uint256) {
@@ -230,15 +242,18 @@ contract UnipoolInvestment is Initializable, UUPSUpgradeable, AccessControlUpgra
             address asset = portfolioAssets[i];
             total += _getAssetValue(asset);
         }
-        return total;
+        uint256 stableBalance = stableCoin.balanceOf(address(this));
+        return total + stableBalance;
     }
 
     //Intial Settup
     function setPortfolioAssets(address[] calldata assets) external onlyRole(PORTFOLIO_MANAGER_ROLE) {
-        require(portfolioAssets.length == 0, "Porfolio assets already set");
         portfolioAssets = assets;
     }
 
+    function setWhitelistedAssets(address[] calldata assets) external onlyRole(PORTFOLIO_MANAGER_ROLE) {
+        whitelistedAssets = assets;
+    }
    
     function rebalance(
         address[] calldata sellAssets, 
@@ -249,10 +264,11 @@ contract UnipoolInvestment is Initializable, UUPSUpgradeable, AccessControlUpgra
         require(sellAssets.length == sellAmountsBps.length && buyAssets.length == buyAmountsBps.length, "Array length mismatch");
         // SELL phase: Compute amounts from bps
         for (uint256 i = 0; i < sellAssets.length; i++) {
-            uint256 assetBalance = IERC20(sellAssets[i]).balanceOf(address(this));
-            uint256 bps = sellAmountsBps[i];
+            uint256 assetBalance = IERC20(sellAssets[i]).balanceOf(address(this)); 
+            require(assetBalance > 0, "Balance zero (sellAssets)");
+            uint256 bps = sellAmountsBps[i]; 
             require(bps <= 10000, "Sell bps > 10000");
-            uint256 amountToSell = (assetBalance * bps) / 10000;
+            uint256 amountToSell = (assetBalance * bps) / 10000; 
             require(amountToSell <= assetBalance, "Invalid sell amount");
             if (amountToSell > 0) {
                 swapTokens(amountToSell, sellAssets[i], address(stableCoin));
@@ -263,33 +279,42 @@ contract UnipoolInvestment is Initializable, UUPSUpgradeable, AccessControlUpgra
         require(_sum(buyAmountsBps) <= 10000, "Total buy bps > 10000");
         uint256 stableBalance = stableCoin.balanceOf(address(this));
         for (uint256 i = 0; i < buyAssets.length; i++) {
+
+            require(isWhitelistedAsset(buyAssets[i]), "not whitelisted");
             uint256 bps = buyAmountsBps[i];
+            require(bps <= 10000, "Buy bps > 10000");
+            require(bps > 0, "Buy bps == 0");
             uint256 amountToBuy = (stableBalance * bps) / 10000;
+
             if (amountToBuy > stableBalance) {
                 amountToBuy = stableBalance;
             }
             if (amountToBuy == 0) continue;
             swapTokens(amountToBuy, address(stableCoin), buyAssets[i]);
-            stableBalance -= amountToBuy;
+            addAssetsToPortFolio(buyAssets[i]);
         }
 
         // Remove all assets with a balance of 0 from portfolioAssets
         _pruneZeroBalanceAssets();
-        // Add new assets from buyAssets if not already included
-        addAssetsToPortFolio(buyAssets);
 
         emit Rebalanced(sellAssets, sellAmountsBps, buyAssets, buyAmountsBps);
     }
 
 
-    function addAssetsToPortFolio(address[] calldata buyAssets) internal {
-        for (uint256 addIdx = 0; addIdx < buyAssets.length; addIdx++) {
-            address newAsset = buyAssets[addIdx];
-            bool exists = _assetInPortfolio(buyAssets[addIdx]);
+    function addAssetsToPortFolio(address newAsset) internal {
+            bool exists = _assetInPortfolio(newAsset);
             if (!exists) {
                 portfolioAssets.push(newAsset);
             }
+    }
+
+    function isWhitelistedAsset(address asset) internal view returns (bool) {
+        for (uint256 i = 0; i < whitelistedAssets.length; i++) {
+            if (whitelistedAssets[i] == asset) {
+                return true;
+            }
         }
+        return false;
     }
 
     function _assetInPortfolio(address asset) internal view returns (bool) {

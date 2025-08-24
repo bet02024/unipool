@@ -9,12 +9,13 @@ import { Slider } from "@/components/ui/slider"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { useUnipool } from "@/hooks/useUnipool"
-import { TrendingUp, TrendingDown, DollarSign, PieChart, RefreshCw, AlertCircle, Network } from "lucide-react"
+import { TrendingUp, TrendingDown, DollarSign, PieChart as PieChartIcon, RefreshCw, AlertCircle, Network } from "lucide-react"
 import { toast } from "sonner"
 import { ConnectKitButton } from "connectkit"
 import { useAccount, useChainId, useSwitchChain } from "wagmi"
 import { SUPPORTED_CHAINS } from "@/config/contracts"
-import { DashboardApp } from "@/app/dashboard"
+import { DashboardApp, UnipoolContractUI  } from "@/app/dashboard"
+import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 function DAppContent() {
   const { address, isConnected } = useAccount()
@@ -346,7 +347,7 @@ function DAppContent() {
           <Card className="bg-gray-900 border-gray-800">
             <CardHeader>
               <CardTitle className="text-white flex items-center">
-                <PieChart className="w-5 h-5 mr-2" />
+                <PieChartIcon className="w-5 h-5 mr-2" />
                 Protocol Analytics
               </CardTitle>
               <CardDescription className="text-gray-400">Overview of the entire protocol</CardDescription>
@@ -370,17 +371,11 @@ function DAppContent() {
               <Separator className="bg-gray-700" />
 
               <div className="space-y-3">
-                <h4 className="text-white font-medium">Portfolio Assets</h4>
-                {portfolioData?.assetBalances.length ? (
-                  portfolioData.assetBalances.map((asset, index) => (
-                    <div key={index} className="flex justify-between text-sm">
-                      <span className="text-gray-400">{formatAddress(asset.address)}</span>
-                      <span className="text-white">{formatNumber(asset.balance, 6)}</span>
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-gray-500 text-sm">No assets found</div>
-                )}
+
+                { portfolioData?.assetBalances.length ? (
+                  <UnipoolContractUI /> 
+                ):(<div className="text-gray-500 text-sm">No assets found</div>)}
+
               </div>
             </CardContent>
           </Card>

@@ -15,6 +15,6 @@ interface IUnipoolInvestment {
 
         function getPortfolioValue() external view returns (uint256);
 
-        function rebalance(address[] calldata sellAssets, uint256[] calldata sellAmounts, address[] calldata buyAssets, uint256[] calldata buyAmounts) external;
+        function rebalance(address[] calldata sellAssets, uint256[] calldata sellAmountsBps, address[] calldata buyAssets, uint256[] calldata buyAmountsBps) external;
 
 }

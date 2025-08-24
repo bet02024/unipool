@@ -31,8 +31,6 @@ type AgentCardProps = {
 };
 
 type UnipoolContractUIProps = {
-  portfolio: Portfolio;
-  totalPortfolioValue: number | string;
 };
 
 // @ts-expect-error
@@ -95,13 +93,111 @@ const AgentCard: React.FC<AgentCardProps> = ({ name, icon, status, logs }) => (
   </div>
 );
 
-const UnipoolContractUI: React.FC<UnipoolContractUIProps> = ({ portfolio, totalPortfolioValue }) => {
-  const portfolioData = Object.entries(portfolio)
-    .filter(([, value]) => value > 0)
-    .map(([name, value]) => ({ name, value: parseFloat(value.toFixed(2)) }));
 
-  const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AF19FF', '#FF42A1'];
-  const RADIAN = Math.PI / 180;
+
+
+const UnipoolContractUI: React.FC<UnipoolContractUIProps> = () => {
+
+    const [totalPortfolioValue, setTotalPortfolioValue] = useState<number|string>(0);
+
+    const [portfolioData, setPortfolioData] = useState<[]>([]);
+
+
+    const [unipool, setUnipool] = useState<UnipoolState>({
+        portfolio: {},
+        logs: [],
+    });
+
+    //const portfolioData = Object.entries(unipool.portfolio)
+
+   
+    const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#AF19FF', '#FF42A1'];
+    const RADIAN = Math.PI / 180;
+
+
+    const fetchPortfolio = useCallback(async () => {
+        try {
+          const res = await fetch(ASSET_BALANCES_ENDPOINT);
+          const data = await res.json();
+          if (!data.success) throw new Error(data.error || "Unknown error fetching assets");
+          const assets = data.assets;
+          if (assets.length === 0) {
+            setUnipool(prev => ({ ...prev, portfolio: {} }));
+            return;
+          }
+          const web3 = new Web3(WEB3_RPC);
+          const details = await Promise.all(assets.map(async (item: any) => {
+            try {
+              const contract = new web3.eth.Contract(ERC20_ABI, item.address);
+              const [name, symbol, decimals, balance] = await Promise.all([
+                contract.methods.name().call(),
+                contract.methods.symbol().call(),
+                contract.methods.decimals().call(),
+                contract.methods.balanceOf(UNIPOOL_CONTRACT_ADDRESS).call(),
+              ]);
+              return { ...item, name, symbol, decimals: Number(decimals), coingecko_id: symbol.toLowerCase(), balance };
+            } catch (e) {
+              console.log("##### ERRORR ######");
+              console.log(e);
+              return { ...item, name: item.address.slice(0,6) + "..." + item.address.slice(-4), symbol: item.address, decimals: 18, coingecko_id: null, balance: 0 };
+            }
+          }));
+          const idToAsset: Record<string, any> = {};
+          const ids: string[] = [];
+          details.forEach((item: any) => {
+            if (item.coingecko_id) {
+              ids.push(item.coingecko_id);
+              idToAsset[item.coingecko_id] = item;
+            }
+          });
+          const priceURL = `${COINGECKO_API}${ids.join(",")}`;
+          const priceResp = await fetch(priceURL, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-cg-demo-api-key': CG_API_KEY
+            }
+          });
+          const prices = await priceResp.json();
+          const prices_lower = convertKeysToLowercase(prices);
+    
+          let totalUSD = 0;
+          const assetValues = details.map((item: any) => {
+            const amount = Number(item.balance) / 10 ** item.decimals;
+            const priceUSD = item.coingecko_id && prices_lower[item.coingecko_id] ? Number(prices_lower[item.coingecko_id].usd) : 0;
+            const valueUSD = amount * priceUSD;
+            totalUSD += valueUSD;
+            return { ...item, amount, priceUSD, valueUSD };
+          });
+          setTotalPortfolioValue(totalUSD.toFixed(2));
+          let _portfolio: Portfolio = {};
+          assetValues.forEach((item: any) => {
+            if (item.valueUSD && totalUSD > 0) {
+                _portfolio[item.name + " Value $" + String(item.valueUSD.toFixed(2))] = (item.valueUSD * 100 / totalUSD);
+            }
+          });
+
+          setPortfolioData( Object.entries(_portfolio)
+            .filter(([, value]) => value > 0)
+            .map(([name, value]) => ({ name, value: parseFloat(value.toFixed(2)) }))
+          )
+
+          setUnipool(prev => ({
+            ...prev,
+            _portfolio,
+          }));
+        } catch (err) {
+          console.error("Failed to fetch pool portfolio:", err);
+        }
+      }, []);
+    
+      useEffect(() => {
+        fetchPortfolio();
+        const interval = setInterval(fetchPortfolio, 60000);
+        return () => clearInterval(interval);
+      }, [fetchPortfolio, totalPortfolioValue]);
+
+
  
   const renderCustomizedLabel = ({
     cx, cy, midAngle, innerRadius, outerRadius, percent,
@@ -120,11 +216,10 @@ const UnipoolContractUI: React.FC<UnipoolContractUIProps> = ({ portfolio, totalP
     <div className="bg-gray-800 border border-gray-700 rounded-lg shadow-lg p-6 flex flex-col">
       <div className="flex items-center space-x-3 mb-4">
         <FileText className="text-purple-400" size={24} />
-        <h3 className="text-xl font-bold text-white">Unipool Smart Contract</h3>
+        <h3 className="text-xl font-bold text-white">Unipool Smart Contract Allocation</h3>
       </div>
       <div className="flex-grow grid grid-cols-1 md:grid-cols-1 gap-6">
         <div>
-          <h4 className="text-lg font-semibold text-cyan-400 mb-4">Portfolio Allocation</h4>
           <ResponsiveContainer width="100%" height={250}>
             <PieChart>
               <Pie
@@ -144,13 +239,14 @@ const UnipoolContractUI: React.FC<UnipoolContractUIProps> = ({ portfolio, totalP
               </Pie>
               <Legend />
             </PieChart>
-            <h4 className="text-lg font-semibold text-cyan-400 mb-2">Portfolio Value: ${totalPortfolioValue}</h4>
           </ResponsiveContainer>
         </div> 
       </div>
     </div>
   );
 };
+
+
 
 const DashboardApp: React.FC = () => {
   const [isConnected, setIsConnected] = useState(false);
@@ -161,12 +257,21 @@ const DashboardApp: React.FC = () => {
   const [pmAgent, setPmAgent] = useState<AgentState>({ status: 'Awaiting data...', logs: [] });
   const [traderAgent, setTraderAgent] = useState<AgentState>({ status: 'Awaiting instructions...', logs: [] });
 
-  const [totalPortfolioValue, setTotalPortfolioValue] = useState<number|string>(0);
-  const [unipool, setUnipool] = useState<UnipoolState>({
-    portfolio: {},
-    logs: [],
-  });
+
+  const truncateEthAddress = (
+    address: string,
+    prefixLength: number = 6, // Number of characters to show at the beginning (including "0x")
+    suffixLength: number = 4  // Number of characters to show at the end
+  ): string => {
+    if (!address || address.length < prefixLength + suffixLength + 3) { // +3 for "..."
+      return address; // Return original if too short to truncate effectively
+    }
+    const prefix = address.substring(0, prefixLength);
+    const suffix = address.substring(address.length - suffixLength);
   
+    return `${prefix}...${suffix}`;
+  };
+
   const addLog = useCallback((setter: React.Dispatch<React.SetStateAction<AgentState>>, message: string) => {
     setter(prev => ({
       ...prev,
@@ -178,81 +283,7 @@ const DashboardApp: React.FC = () => {
     setter(prev => ({ ...prev, status }));
   }, []);
 
-  const fetchPortfolio = useCallback(async () => {
-    try {
-      const res = await fetch(ASSET_BALANCES_ENDPOINT);
-      const data = await res.json();
-      if (!data.success) throw new Error(data.error || "Unknown error fetching assets");
-      const assets = data.assets;
-      if (assets.length === 0) {
-        setUnipool(prev => ({ ...prev, portfolio: {} }));
-        return;
-      }
-      const web3 = new Web3(WEB3_RPC);
-      const details = await Promise.all(assets.map(async (item: any) => {
-        try {
-          const contract = new web3.eth.Contract(ERC20_ABI, item.address);
-          const [name, symbol, decimals, balance] = await Promise.all([
-            contract.methods.name().call(),
-            contract.methods.symbol().call(),
-            contract.methods.decimals().call(),
-            contract.methods.balanceOf(UNIPOOL_CONTRACT_ADDRESS).call(),
-          ]);
-          return { ...item, name, symbol, decimals: Number(decimals), coingecko_id: symbol.toLowerCase(), balance };
-        } catch (e) {
-          console.log("##### ERRORR ######");
-          console.log(e);
-          return { ...item, name: item.address.slice(0,6) + "..." + item.address.slice(-4), symbol: item.address, decimals: 18, coingecko_id: null, balance: 0 };
-        }
-      }));
-      const idToAsset: Record<string, any> = {};
-      const ids: string[] = [];
-      details.forEach((item: any) => {
-        if (item.coingecko_id) {
-          ids.push(item.coingecko_id);
-          idToAsset[item.coingecko_id] = item;
-        }
-      });
-      const priceURL = `${COINGECKO_API}${ids.join(",")}`;
-      const priceResp = await fetch(priceURL, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-cg-demo-api-key': CG_API_KEY
-        }
-      });
-      const prices = await priceResp.json();
-      const prices_lower = convertKeysToLowercase(prices);
 
-      let totalUSD = 0;
-      const assetValues = details.map((item: any) => {
-        const amount = Number(item.balance) / 10 ** item.decimals;
-        const priceUSD = item.coingecko_id && prices_lower[item.coingecko_id] ? Number(prices_lower[item.coingecko_id].usd) : 0;
-        const valueUSD = amount * priceUSD;
-        totalUSD += valueUSD;
-        return { ...item, amount, priceUSD, valueUSD };
-      });
-      setTotalPortfolioValue(totalUSD.toFixed(2));
-      let portfolio: Portfolio = {};
-      assetValues.forEach((item: any) => {
-        if (item.valueUSD && totalUSD > 0) {
-          portfolio[item.name + " Value $" + String(item.valueUSD.toFixed(2))] = (item.valueUSD * 100 / totalUSD);
-        }
-      });
-      setUnipool(prev => ({
-        ...prev,
-        portfolio,
-      }));
-    } catch (err) {
-      console.error("Failed to fetch pool portfolio:", err);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchPortfolio();
-    const interval = setInterval(fetchPortfolio, 60000);
-    return () => clearInterval(interval);
-  }, [fetchPortfolio]);
 
   useEffect(() => {
     socket.on('connect', () => {
@@ -288,14 +319,14 @@ const DashboardApp: React.FC = () => {
 
     socket.on('pm_instructions', ({ message }: { message: any }) => {
       console.log('pm_instructions', message);
-      const status = `New Trade Order  :: Action -> (${message.action}),  Detail: ${message.detail} `;
+      const status = `New Trade Order  :: Action -> (${message.action}),   ${ message.detail ?  "Detail: Sell assets " + message.detail.sell_assets.map((address: string) => truncateEthAddress(address)) + " :: Buy assets " + message.detail.buy_assets.map((address: string) => truncateEthAddress(address)) : "" } `;
       updateStatus(setPmAgent, status);
       addLog(setPmAgent, status);
     });
 
     socket.on('trader_status', ({ message }: { message: any }) => {
       console.log('trader_status', message);
-      const status = `${message.status}: Sell assets ${message.details.sell_assets}, buy Assets -> ${message.details.buy_assets}`;
+      const status = `${message.status}:  ${message.tx_hash ? " tx_hash : " + message.tx_hash + ", " : "" }  Sell assets ${message.details.sell_assets.map((address: string) => truncateEthAddress(address))}, Buy Assets -> ${message.details.buy_assets.map((address: string) => truncateEthAddress(address))} `;
       updateStatus(setTraderAgent, status);
       addLog(setTraderAgent, status);
       fetchPortfolio();
@@ -306,20 +337,18 @@ const DashboardApp: React.FC = () => {
     // eslint-disable-next-line
   }, []);
 
+
+
+
   return (
     <div className="bg-gray-900 min-h-screen text-white p-4 sm:p-6 lg:p-8 font-sans">
       <div className="max-w-7xl mx-auto">
         <header className="mb-8">
           <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-4xl sm:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-500">
-                Unipool Live Dashboard
-              </h1>
-              <p className="text-gray-400 mt-2 text-lg">Real-time visualization of the Unipool AI Agent backend.</p>
-            </div>
+            
             <div className={`flex items-center space-x-2 p-2 rounded-lg ${isConnected ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
               {isConnected ? <Wifi size={20} /> : <WifiOff size={20} />}
-              <span className="font-semibold">{isConnected ? 'Connected' : 'Disconnected'}</span>
+              <span className="font-semibold">{isConnected ? 'AI Agents are running' : 'AI Agenst aren`t running'}</span>
             </div>
           </div>
         </header>
@@ -327,12 +356,11 @@ const DashboardApp: React.FC = () => {
         <main className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <div className="space-y-8">
             <AgentCard name="Research-Agent" icon={<Activity className="text-green-400" />} status={researchAgent.status} logs={researchAgent.logs} />
-            <AgentCard name="Risk-Agent" icon={<Shield className="text-red-400" />} status={riskAgent.status} logs={riskAgent.logs} />
             <AgentCard name="Trader-Agent" icon={<ArrowDown className="text-blue-400" />} status={traderAgent.status} logs={traderAgent.logs} />
           </div>
           <div className="space-y-8">
-            <UnipoolContractUI portfolio={unipool.portfolio} totalPortfolioValue={totalPortfolioValue} />
-            <AgentCard name="PM-Agent" icon={<DollarSign className="text-yellow-400" />} status={pmAgent.status} logs={pmAgent.logs} />
+          <AgentCard name="Risk-Agent" icon={<Shield className="text-red-400" />} status={riskAgent.status} logs={riskAgent.logs} />
+          <AgentCard name="PM-Agent" icon={<DollarSign className="text-yellow-400" />} status={pmAgent.status} logs={pmAgent.logs} />
           </div>
         </main>
       </div>
@@ -340,5 +368,5 @@ const DashboardApp: React.FC = () => {
   );
 };
 
-export { DashboardApp }
+export { DashboardApp, UnipoolContractUI }
 
